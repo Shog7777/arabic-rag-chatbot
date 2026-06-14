@@ -1,416 +1,422 @@
-"""
-Arabic RAG Chatbot — Streamlit Web Interface
-Run: streamlit run app.py
-"""
-
-import os
-import sys
-import time
-
+import os, sys, time
 sys.path.insert(0, os.path.dirname(__file__))
 
 import streamlit as st
-from src.rag_engine import ArabicRAGChatbot
-from src.document_loader import load_document_from_bytes
-
-# ─── Page Config ─────────────────────────────────────────────────────────────
+from src.rag_engine import GeminiRAGChatbot
+from src.document_loader import load_from_bytes
 
 st.set_page_config(
-    page_title="عربي RAG | Arabic Knowledge Assistant",
-    page_icon="🧠",
+    page_title="مساعد المستندات الذكي",
+    page_icon="✨",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
-
-# ─── Custom CSS ───────────────────────────────────────────────────────────────
 
 st.markdown("""
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap');
 
-  :root {
-    --bg-primary: #0d1117;
-    --bg-secondary: #161b22;
-    --bg-tertiary: #21262d;
-    --accent-primary: #238636;
-    --accent-secondary: #1f6feb;
-    --accent-glow: rgba(35,134,54,0.15);
-    --text-primary: #e6edf3;
-    --text-secondary: #8b949e;
-    --text-muted: #484f58;
-    --border: #30363d;
-    --user-bubble: #1f6feb20;
-    --bot-bubble: #23863620;
-    --danger: #da3633;
-    --warning: #d29922;
-  }
+* { font-family: 'IBM Plex Sans Arabic', sans-serif !important; }
 
-  .stApp { background: var(--bg-primary); }
-  .stApp > header { background: transparent; }
+.stApp {
+    background: linear-gradient(135deg, #0a0a0f 0%, #0d1117 50%, #0a0f1a 100%);
+}
 
-  /* Sidebar */
-  [data-testid="stSidebar"] {
-    background: var(--bg-secondary);
-    border-right: 1px solid var(--border);
-  }
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background: rgba(13,17,23,0.95) !important;
+    border-right: 1px solid rgba(255,255,255,0.06) !important;
+}
 
-  /* Typography */
-  * { font-family: 'IBM Plex Sans Arabic', 'Segoe UI', sans-serif !important; }
-  h1, h2, h3 { color: var(--text-primary) !important; }
-
-  /* Chat messages */
-  .message-container { margin: 12px 0; animation: fadeIn 0.3s ease; }
-  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-
-  .user-message {
-    background: var(--user-bubble);
-    border: 1px solid rgba(31,111,235,0.3);
-    border-radius: 12px 12px 4px 12px;
-    padding: 14px 18px;
-    margin: 8px 0 8px 15%;
-    color: var(--text-primary);
-    text-align: right;
+/* Header */
+.hero {
+    background: linear-gradient(135deg, rgba(66,133,244,0.15) 0%, rgba(52,168,83,0.1) 50%, rgba(251,188,4,0.08) 100%);
+    border: 1px solid rgba(66,133,244,0.2);
+    border-radius: 20px;
+    padding: 28px 36px;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+}
+.hero::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(66,133,244,0.08) 0%, transparent 70%);
+    border-radius: 50%;
+}
+.hero-title {
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #4285f4, #34a853, #fbbc04);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0;
     direction: rtl;
-    font-size: 0.95rem;
-    line-height: 1.7;
-  }
-
-  .bot-message {
-    background: var(--bot-bubble);
-    border: 1px solid rgba(35,134,54,0.3);
-    border-radius: 12px 12px 12px 4px;
-    padding: 14px 18px;
-    margin: 8px 15% 8px 0;
-    color: var(--text-primary);
-    text-align: right;
+}
+.hero-sub {
+    color: rgba(255,255,255,0.5);
+    font-size: 0.85rem;
+    margin-top: 6px;
     direction: rtl;
+}
+
+/* Messages */
+.msg-user {
+    background: linear-gradient(135deg, rgba(66,133,244,0.12), rgba(66,133,244,0.06));
+    border: 1px solid rgba(66,133,244,0.25);
+    border-radius: 18px 18px 6px 18px;
+    padding: 16px 20px;
+    margin: 10px 0 10px 12%;
+    color: #e8eaed;
+    direction: rtl;
+    text-align: right;
     font-size: 0.95rem;
     line-height: 1.8;
-  }
+    animation: slideIn 0.3s ease;
+}
+.msg-bot {
+    background: linear-gradient(135deg, rgba(52,168,83,0.08), rgba(52,168,83,0.03));
+    border: 1px solid rgba(52,168,83,0.2);
+    border-radius: 18px 18px 18px 6px;
+    padding: 16px 20px;
+    margin: 10px 12% 10px 0;
+    color: #e8eaed;
+    direction: rtl;
+    text-align: right;
+    font-size: 0.95rem;
+    line-height: 1.9;
+    animation: slideIn 0.3s ease;
+}
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
 
-  .source-badge {
-    display: inline-block;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    font-size: 0.72rem;
+/* Source badges */
+.src-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(251,188,4,0.1);
+    border: 1px solid rgba(251,188,4,0.25);
+    color: #fbbc04;
+    font-size: 0.7rem;
     padding: 3px 10px;
     border-radius: 20px;
     margin: 6px 3px 0;
-    font-family: 'JetBrains Mono', monospace !important;
+}
+.meta {
+    color: rgba(255,255,255,0.25);
+    font-size: 0.68rem;
+    margin-top: 10px;
     direction: ltr;
-  }
+    text-align: left;
+}
 
-  .meta-line {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    margin-top: 8px;
-    font-family: 'JetBrains Mono', monospace !important;
-    direction: ltr;
-  }
-
-  /* Stats cards */
-  .stat-card {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+/* Stat cards */
+.stat {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
     padding: 14px;
     text-align: center;
-  }
-  .stat-number { font-size: 1.8rem; font-weight: 600; color: var(--accent-primary); }
-  .stat-label { font-size: 0.75rem; color: var(--text-secondary); }
+}
+.stat-n { font-size: 2rem; font-weight: 700; color: #4285f4; line-height: 1; }
+.stat-l { font-size: 0.72rem; color: rgba(255,255,255,0.4); margin-top: 4px; }
 
-  /* Header */
-  .app-header {
-    background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px 28px;
-    margin-bottom: 24px;
-    display: flex;
+/* Empty state */
+.empty {
+    text-align: center;
+    padding: 80px 20px;
+    color: rgba(255,255,255,0.2);
+}
+.empty-icon { font-size: 4rem; margin-bottom: 16px; }
+.empty-title { font-size: 1.1rem; font-weight: 600; color: rgba(255,255,255,0.4); }
+.empty-sub { font-size: 0.82rem; margin-top: 8px; }
+
+/* Gemini badge */
+.gemini-badge {
+    display: inline-flex;
     align-items: center;
-    gap: 16px;
-  }
+    gap: 6px;
+    background: linear-gradient(135deg, rgba(66,133,244,0.15), rgba(234,67,53,0.1));
+    border: 1px solid rgba(66,133,244,0.3);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 0.75rem;
+    color: #4285f4;
+    margin-bottom: 16px;
+}
 
-  /* Input */
-  .stTextInput > div > div > input,
-  .stTextArea > div > div > textarea {
-    background: var(--bg-secondary) !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text-primary) !important;
-    border-radius: 8px !important;
-    direction: rtl;
-  }
+/* Supported formats */
+.fmt-tag {
+    display: inline-block;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.5);
+    margin: 2px;
+}
 
-  .stButton > button {
-    background: var(--accent-primary) !important;
+/* Buttons */
+.stButton > button {
+    background: linear-gradient(135deg, #4285f4, #1a73e8) !important;
     color: white !important;
     border: none !important;
-    border-radius: 8px !important;
-    font-weight: 500 !important;
-    transition: all 0.2s;
-  }
-  .stButton > button:hover {
-    background: #2ea043 !important;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px var(--accent-glow);
-  }
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s !important;
+    width: 100%;
+}
+.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 24px rgba(66,133,244,0.35) !important;
+}
 
-  /* File uploader */
-  [data-testid="stFileUploader"] {
-    background: var(--bg-tertiary);
-    border: 1px dashed var(--border);
-    border-radius: 8px;
-  }
+/* Input */
+.stTextInput > div > div > input {
+    background: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 12px !important;
+    color: #e8eaed !important;
+    padding: 12px 16px !important;
+    direction: rtl;
+    font-size: 0.95rem !important;
+}
+.stTextInput > div > div > input:focus {
+    border-color: rgba(66,133,244,0.5) !important;
+    box-shadow: 0 0 0 3px rgba(66,133,244,0.1) !important;
+}
 
-  .empty-state {
-    text-align: center;
-    padding: 60px 20px;
-    color: var(--text-muted);
-    font-size: 0.9rem;
-  }
-  .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+/* Divider */
+hr { border-color: rgba(255,255,255,0.06) !important; }
 
-  /* Divider */
-  hr { border-color: var(--border) !important; }
+/* File uploader */
+[data-testid="stFileUploader"] {
+    background: rgba(255,255,255,0.02);
+    border: 1px dashed rgba(255,255,255,0.1);
+    border-radius: 12px;
+}
 
-  /* Hide Streamlit branding */
-  #MainMenu, footer, .stDeployButton { visibility: hidden; }
+#MainMenu, footer, .stDeployButton { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ─── Session State ────────────────────────────────────────────────────────────
+# ── Session State ─────────────────────────────────────────────────────────────
+def init():
+    for k, v in {
+        'bot': None, 'msgs': [], 'api_key': '',
+        'docs_loaded': 0, 'total_chunks': 0,
+    }.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
-def init_session():
-    defaults = {
-        'chatbot': None,
-        'messages': [],
-        'docs_loaded': 0,
-        'total_chunks': 0,
-        'total_tokens': 0,
-        'api_key': os.getenv('GROQ_API_KEY', ''),
-    }
-    for key, val in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = val
+init()
 
-init_session()
-
-
-# ─── Sidebar ──────────────────────────────────────────────────────────────────
-
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## ⚙️ الإعدادات")
-    st.markdown("---")
+    st.markdown("""
+    <div class="gemini-badge">
+        ✨ Powered by Gemini 2.0 Flash
+    </div>
+    """, unsafe_allow_html=True)
 
-    # API Key
-    api_key = st.text_input(
-        "🔑 Groq API Key",
-        value=st.session_state.api_key,
-        type="password",
-        placeholder="gsk_...",
-        help="احصل على مفتاح مجاني من console.groq.com"
-    )
+    st.markdown("### 🔑 Gemini API Key")
+    api_key = st.text_input("", value=st.session_state.api_key,
+                             type="password", placeholder="AIza...",
+                             label_visibility="collapsed",
+                             help="احصل على مفتاح مجاني من aistudio.google.com")
     st.session_state.api_key = api_key
 
-    # Model selector
-    model = st.selectbox(
-        "🤖 النموذج",
-        ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"],
-        help="llama-3.3-70b أدق، llama-3.1-8b أسرع"
-    )
-
-    top_k = st.slider("📎 عدد المقاطع المسترجعة", 2, 8, 4,
-                      help="عدد أكبر = إجابة أشمل، لكن أبطأ")
+    if api_key:
+        st.success("✅ API Key محفوظ")
 
     st.markdown("---")
-    st.markdown("### 📁 رفع المستندات")
+    st.markdown("### 📂 رفع المستندات")
+    st.markdown("""
+    <div style="margin-bottom:10px">
+        <span class="fmt-tag">📄 PDF</span>
+        <span class="fmt-tag">📝 Word</span>
+        <span class="fmt-tag">📊 Excel</span>
+        <span class="fmt-tag">📃 TXT</span>
+        <span class="fmt-tag">📋 MD</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    uploaded_files = st.file_uploader(
-        "ارفع ملفات PDF أو TXT",
-        type=['pdf', 'txt', 'md'],
+    uploaded = st.file_uploader(
+        "",
+        type=['pdf', 'docx', 'xlsx', 'xls', 'txt', 'md', 'doc'],
         accept_multiple_files=True,
         label_visibility="collapsed"
     )
 
-    if uploaded_files and st.button("🚀 فهرسة المستندات", use_container_width=True):
-        if not api_key:
-            st.error("⚠️ أدخل Groq API Key أولاً")
-        else:
-            with st.spinner("جاري معالجة المستندات..."):
-                try:
-                    chatbot = ArabicRAGChatbot(api_key=api_key, model=model)
+    if uploaded:
+        if st.button("🚀 تحليل وفهرسة المستندات", use_container_width=True):
+            if not api_key:
+                st.error("⚠️ أدخل Gemini API Key أولاً")
+            else:
+                with st.spinner("⚡ جاري المعالجة..."):
+                    try:
+                        bot = GeminiRAGChatbot(api_key=api_key)
+                        docs = []
+                        prog = st.progress(0)
+                        errors = []
+                        for i, f in enumerate(uploaded):
+                            try:
+                                content, name = load_from_bytes(f.read(), f.name)
+                                if len(content) > 50:
+                                    docs.append((content, name))
+                                else:
+                                    errors.append(f"⚠️ {f.name}: ملف فارغ أو لا يمكن قراءته")
+                            except Exception as e:
+                                errors.append(f"❌ {f.name}: {e}")
+                            prog.progress((i+1)/len(uploaded))
 
-                    docs = []
-                    progress = st.progress(0)
-                    for i, f in enumerate(uploaded_files):
-                        content, name = load_document_from_bytes(f.read(), f.name)
-                        docs.append((content, name))
-                        progress.progress((i + 1) / len(uploaded_files))
+                        if docs:
+                            bot.add_documents(docs)
+                            st.session_state.bot = bot
+                            st.session_state.docs_loaded = bot.docs_loaded
+                            st.session_state.total_chunks = bot.total_chunks
+                            st.session_state.msgs = []
+                            prog.empty()
+                            st.success(f"✅ تم فهرسة {len(docs)} ملف | {bot.total_chunks} مقطع")
+                        
+                        for err in errors:
+                            st.warning(err)
 
-                    chatbot.add_documents(docs)
-                    st.session_state.chatbot = chatbot
-                    st.session_state.docs_loaded = len(docs)
-                    st.session_state.total_chunks = len(chatbot.retriever.chunks)
-                    st.session_state.messages = []
-                    progress.empty()
-                    st.success(f"✅ تم فهرسة {len(docs)} مستند بنجاح!")
-                except Exception as e:
-                    st.error(f"❌ خطأ: {e}")
+                    except Exception as e:
+                        st.error(f"❌ خطأ: {e}")
 
     # Stats
     if st.session_state.docs_loaded > 0:
         st.markdown("---")
         st.markdown("### 📊 إحصائيات")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(f"""<div class="stat-card">
-                <div class="stat-number">{st.session_state.docs_loaded}</div>
-                <div class="stat-label">مستندات</div>
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"""<div class="stat">
+                <div class="stat-n">{st.session_state.docs_loaded}</div>
+                <div class="stat-l">ملفات</div>
             </div>""", unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""<div class="stat-card">
-                <div class="stat-number">{st.session_state.total_chunks}</div>
-                <div class="stat-label">مقاطع</div>
+        with c2:
+            st.markdown(f"""<div class="stat">
+                <div class="stat-n">{st.session_state.total_chunks}</div>
+                <div class="stat-l">مقطع</div>
             </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
 
-    if st.button("🗑️ مسح المحادثة", use_container_width=True):
-        st.session_state.messages = []
-        if st.session_state.chatbot:
-            st.session_state.chatbot.clear_history()
-        st.rerun()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🗑️ مسح", use_container_width=True):
+            st.session_state.msgs = []
+            if st.session_state.bot:
+                st.session_state.bot.reset()
+                st.session_state.docs_loaded = 0
+                st.session_state.total_chunks = 0
+            st.rerun()
+    with col2:
+        top_k = st.selectbox("المقاطع", [3, 5, 8, 10], index=1, label_visibility="collapsed")
 
-    # Footer
     st.markdown("""
-    <div style="text-align:center; color:#484f58; font-size:0.72rem; margin-top:20px">
-    Arabic RAG Chatbot<br>
-    Powered by Groq + LLaMA 3.3<br>
-    <a href="https://github.com/Shog7777/arabic-rag-chatbot" style="color:#238636">github.com/Shog7777</a>
-    </div>
-    """, unsafe_allow_html=True)
+    <div style="text-align:center;color:rgba(255,255,255,0.15);font-size:0.7rem;margin-top:20px">
+    Arabic RAG Chatbot v2<br>
+    <a href="https://github.com/Shog7777/arabic-rag-chatbot" style="color:#4285f4">@Shog7777</a>
+    </div>""", unsafe_allow_html=True)
 
 
-# ─── Main Area ────────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────────────────────────────────
 
-# Header
+# Hero header
 st.markdown("""
-<div class="app-header">
-  <div style="font-size:2.5rem">🧠</div>
-  <div>
-    <h1 style="margin:0; font-size:1.5rem; color:#e6edf3">Arabic RAG Chatbot</h1>
-    <p style="margin:4px 0 0; color:#8b949e; font-size:0.85rem; direction:rtl">
-      اسأل أي سؤال عن مستنداتك — الإجابات مستخرجة مباشرة من محتواك
-    </p>
-  </div>
+<div class="hero">
+    <div style="display:flex;align-items:center;gap:16px">
+        <div style="font-size:2.8rem">✨</div>
+        <div>
+            <div class="hero-title">مساعد المستندات الذكي</div>
+            <div class="hero-sub">ارفع ملفاتك واسأل بالعربية — مدعوم بـ Gemini 2.0 Flash</div>
+        </div>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
+# Chat
+if not st.session_state.msgs:
+    if st.session_state.docs_loaded == 0:
+        st.markdown("""
+        <div class="empty">
+            <div class="empty-icon">📂</div>
+            <div class="empty-title">ارفع مستنداتك للبدء</div>
+            <div class="empty-sub">يدعم PDF · Word · Excel · TXT · Markdown</div>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="empty">
+            <div class="empty-icon">💬</div>
+            <div class="empty-title">المستندات جاهزة — اسأل أي سؤال</div>
+        </div>""", unsafe_allow_html=True)
 
-# Chat display
-chat_container = st.container()
+for msg in st.session_state.msgs:
+    if msg['role'] == 'user':
+        st.markdown(f'<div class="msg-user">{msg["content"]}</div>', unsafe_allow_html=True)
+    else:
+        srcs = ''.join(f'<span class="src-badge">📄 {s}</span>' for s in msg.get('sources', []))
+        meta = f"chunks: {msg.get('chunks_used',0)} · gemini-2.0-flash"
+        st.markdown(f"""
+        <div class="msg-bot">
+            {msg['content']}
+            {f'<div style="margin-top:12px;text-align:right">{srcs}</div>' if srcs else ''}
+            <div class="meta">{meta}</div>
+        </div>""", unsafe_allow_html=True)
 
-with chat_container:
-    if not st.session_state.messages:
-        if st.session_state.docs_loaded == 0:
-            st.markdown("""
-            <div class="empty-state">
-              <div class="empty-icon">📂</div>
-              <div><strong>ارفع مستنداتك للبدء</strong></div>
-              <div style="margin-top:8px">يدعم ملفات PDF وTXT وMarkdown باللغة العربية والإنجليزية</div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div class="empty-state">
-              <div class="empty-icon">💬</div>
-              <div><strong>المستندات جاهزة — ابدأ بالسؤال</strong></div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    for msg in st.session_state.messages:
-        if msg['role'] == 'user':
-            st.markdown(f"""
-            <div class="message-container">
-              <div class="user-message">{msg['content']}</div>
-            </div>""", unsafe_allow_html=True)
-        else:
-            sources_html = ''.join(
-                f'<span class="source-badge">📄 {s}</span>'
-                for s in msg.get('sources', [])
-            )
-            meta = f"chunks: {msg.get('chunks_used',0)} | tokens: {msg.get('tokens_used',0)}"
-            st.markdown(f"""
-            <div class="message-container">
-              <div class="bot-message">
-                {msg['content']}
-                {f'<div style="margin-top:10px;text-align:right">{sources_html}</div>' if sources_html else ''}
-                <div class="meta-line">{meta}</div>
-              </div>
-            </div>""", unsafe_allow_html=True)
-
+# Suggestions
+if st.session_state.docs_loaded > 0 and not st.session_state.msgs:
+    st.markdown('<p style="color:rgba(255,255,255,0.3);font-size:0.8rem;text-align:right;margin-top:16px">💡 جرب:</p>', unsafe_allow_html=True)
+    cols = st.columns(3)
+    suggestions = ["لخّص المحتوى في نقاط", "ما أهم المعلومات؟", "ما التوصيات الواردة؟"]
+    for col, q in zip(cols, suggestions):
+        with col:
+            if st.button(q, use_container_width=True, key=f"s_{q[:5]}"):
+                st.session_state._pending_q = q
+                st.rerun()
 
 # Input
 st.markdown("<br>", unsafe_allow_html=True)
-col1, col2 = st.columns([5, 1])
+c1, c2 = st.columns([5, 1])
+with c1:
+    question = st.text_input("", placeholder="اكتب سؤالك هنا...",
+                              label_visibility="collapsed", key="q_input")
+with c2:
+    send = st.button("إرسال ✦", use_container_width=True)
 
-with col1:
-    question = st.text_input(
-        "سؤالك",
-        placeholder="اكتب سؤالك هنا... مثال: ما هي أهداف رؤية 2030؟",
-        label_visibility="collapsed",
-        key="question_input"
-    )
+# Handle pending suggestion
+if hasattr(st.session_state, '_pending_q'):
+    question = st.session_state._pending_q
+    del st.session_state._pending_q
+    send = True
 
-with col2:
-    send_clicked = st.button("إرسال ➤", use_container_width=True)
-
-
-# Suggested questions
-if st.session_state.docs_loaded > 0 and not st.session_state.messages:
-    st.markdown("""
-    <p style="color:#8b949e; font-size:0.8rem; margin-top:12px; text-align:right">
-    💡 أمثلة على الأسئلة:
-    </p>""", unsafe_allow_html=True)
-
-    q_cols = st.columns(3)
-    suggestions = [
-        "ما هي النقاط الرئيسية في هذا المستند؟",
-        "لخّص المحتوى في ثلاث نقاط",
-        "ما التوصيات الواردة في الوثيقة؟"
-    ]
-    for col, q in zip(q_cols, suggestions):
-        with col:
-            if st.button(q, use_container_width=True, key=f"sugg_{q[:10]}"):
-                question = q
-                send_clicked = True
-
-
-# Handle send
-if (send_clicked or question) and question.strip():
-    if not st.session_state.chatbot:
-        st.error("⚠️ ارفع مستنداتك أولاً من الشريط الجانبي")
+# Process
+if send and question and question.strip():
+    if not st.session_state.bot:
+        st.error("⚠️ ارفع مستنداتك أولاً")
     else:
-        # Update model if changed
-        st.session_state.chatbot.model = model
-
-        # Add user message
-        st.session_state.messages.append({'role': 'user', 'content': question.strip()})
-
-        with st.spinner("🔍 جاري البحث والإجابة..."):
+        st.session_state.msgs.append({'role': 'user', 'content': question.strip()})
+        with st.spinner("✨ Gemini يفكر..."):
             try:
-                result = st.session_state.chatbot.ask(question.strip(), top_k=top_k)
-                st.session_state.total_tokens += result.get('tokens_used', 0)
-                st.session_state.messages.append({
+                result = st.session_state.bot.ask(question.strip(), top_k=top_k)
+                st.session_state.msgs.append({
                     'role': 'assistant',
                     'content': result['answer'],
                     'sources': result['sources'],
                     'chunks_used': result['chunks_used'],
-                    'tokens_used': result.get('tokens_used', 0),
                 })
             except Exception as e:
-                st.error(f"❌ خطأ في الإجابة: {e}")
-
+                st.error(f"❌ {e}")
         st.rerun()
